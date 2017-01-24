@@ -2,7 +2,6 @@ classes
 bin
 gen
 target
-local.properties
 .classpath
 .project
 .settings
