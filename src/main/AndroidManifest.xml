@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           xmlns:tools="http://schemas.android.com/tools" package="com.github.shadowsocks"
-          android:versionCode="216"
-          android:versionName="3.3.4.3">
+          android:versionCode="218"
+          android:versionName="3.3.4.5">
 
 
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.NFC" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 
     <uses-feature android:name="android.hardware.touchscreen"
                   android:required="false"/>
@@ -20,7 +21,7 @@
                   android:required="false"/>
 
     <uses-sdk
-            android:minSdkVersion="16"
+            android:minSdkVersion="23"
             android:targetSdkVersion="25"/>
 
     <application
