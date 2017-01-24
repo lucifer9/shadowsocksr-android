@@ -103,6 +103,11 @@ object ConfigUtils {
       | owner=localhost;
       | soa=localhost,root.localhost,42,86400,900,86400,86400;
       |}
+      |
+      |source {
+      | owner=localhost;
+      | file="/sdcard/hosts";
+      |}
     """.stripMargin
 
   val PDNSD_DIRECT =
@@ -139,6 +144,11 @@ object ConfigUtils {
       | a=127.0.0.1;
       | owner=localhost;
       | soa=localhost,root.localhost,42,86400,900,86400,86400;
+      |}
+      |
+      |source {
+      | owner=localhost;
+      | file="/sdcard/hosts";
       |}
     """.stripMargin
 
