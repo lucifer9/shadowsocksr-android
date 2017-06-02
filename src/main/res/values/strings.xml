@@ -12,7 +12,7 @@
   <string name="nat_summary">Use NAT mode instead of VPN mode. Requires ROOT permission.</string>
   <string name="stat">Network Traffic</string>
   <string name="stat_summary">Sent: \t\t\t\t\t%3$s\t↑\t%1$s/s\nReceived: \t%4$s\t↓\t%2$s/s</string>
-  <string name="stat_profiles">\n%1$s↑\t%2$s↓</string>
+  <string name="stat_profiles">\n%1$s↑\t%2$s↓\t%3$sms</string>
   <string name="traffic_summary">%1$s/s↑\t%2$s/s↓</string>
   <plurals name="bytes" translatable="false">
     <item quantity="one">Byte</item>
@@ -160,6 +160,26 @@
     <item quantity="other">%d items removed</item>
   </plurals>
   <string name="undo">Undo</string>
+
+  <string name="tips_testing">Testing....</string>
+  <string name="tips_sorting">Sorting....</string>
+  <string name="action_full_test">Full latency test</string>
+  <string name="action_sort">Auto sort by latency</string>
+  <string name="ping">Ping</string>
+
+  <string name="frontproxy_enable">Enable</string>
+  <string name="frontproxy_addr">Address</string>
+  <string name="frontproxy_port">Port</string>
+  <string name="frontproxy_username">Username</string>
+  <string name="frontproxy_password">Password</string>
+  <string name="frontproxy_type">Type</string>
+  <string name="frontproxy_set">FrontProxy</string>
+
+
+
+  <string name="scan_qrcode_install_title">Scan tips</string>
+  <string name="scan_qrcode_install_text">It seems that You haven\'t installed the zxing scanner, click the ok button will guide you to play store, or you can click the \'direct download\' button to download directly and installed it.</string>
+  <string name="scan_qrcode_direct_download_text">Direct Download</string>
 
   <!-- tasker -->
   <string name="toggle_service_state">Start the service</string>

@@ -186,12 +186,27 @@ class ProfileManager(dbHelper: DBHelper) {
     }
   }
 
+  def getAllProfilesByElapsed: Option[List[Profile]] = {
+    try {
+      import scala.collection.JavaConversions._
+      Option(dbHelper.profileDao.query(dbHelper.profileDao.queryBuilder.orderBy("elapsed", true).prepare).toList)
+    } catch {
+      case ex: Exception =>
+        Log.e(TAG, "getAllProfiles", ex)
+        app.track(ex)
+        None
+    }
+  }
+
   def createDefault(): Profile = {
     val profile = new Profile {
-      name = "Default"
-      host = "198.199.101.152"
-      remotePort = 443
-      password = "u1rRWTssNv0p"
+      name = "Android SSR Default"
+      host = "137.74.141.42"
+      remotePort = 80
+      password = "androidssr"
+      protocol = "auth_chain_a"
+      obfs = "http_simple"
+      method = "none"
     }
     createProfile(profile)
   }

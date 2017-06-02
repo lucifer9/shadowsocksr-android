@@ -120,6 +120,10 @@
   <string name="add_profile_nfc_hint">2台のデバイス画面を立ち上げ、もう一方のデバイスでプロファイルの共有アイコンをタッチし、2台とも背中合わせにして下さい\nNFC またはNFCラベルを直接スキャン</string>
   <string name="add_profile_scanner_permission_required">QRコードを読み取るにはカメラの使用権限が必要です。</string>
 
+  <string name="scan_qrcode_install_title">スキャンコードのヒント</string>
+  <string name="scan_qrcode_install_text">あなたがダウンロードしてインストールしているアプリストアにあなたを導くでしょう「OK」をクリックし、zxing基準に沿ってスキャナーをインストールしていないようだ、またはあなたはAPKが直接設置ダウンロードするには、「ダウンロード」をクリックします。</string>
+  <string name="scan_qrcode_direct_download_text">ダウンロード</string>
+
   <string-array name="route_entry">
     <item>すべて</item>
     <item>LANアドレスを迂回する</item>
@@ -157,6 +161,20 @@
   <string name="start_service">%s に接続</string>
   <string name="stop_service">%s に切り替え</string>
   <string name="profile_default">現在のプロファイルを使用する</string>
+
+  <string name="tips_testing">テスティング....</string>
+  <string name="tips_sorting">整理....</string>
+  <string name="action_full_test">完全な待ち時間のテスト</string>
+  <string name="action_sort">レイテンシによる自動ソート</string>
+  <string name="ping">Ping</string>
+
+  <string name="frontproxy_enable">有効にする</string>
+  <string name="frontproxy_addr">サーバーアドレス</string>
+  <string name="frontproxy_port">リモートポート</string>
+  <string name="frontproxy_username">ユーザー名</string>
+  <string name="frontproxy_password">パスワード</string>
+  <string name="frontproxy_type">タイプ</string>
+  <string name="frontproxy_set">フロントエージェント</string>
 
   <!-- status -->
   <string name="sent">送信済み:</string>
