@@ -11,8 +11,6 @@
   <string name="nat_summary">Использовать режим NAT вместо VPN. Требует ROOT прав.</string>
   <string name="stat">Сетевая Активность</string>
   <string name="stat_summary">Отправлено: \t\t\t\t\t%3$s\t↑\t%1$s/s\nПолучено: \t%4$s\t↓\t%2$s/s</string>
-  <string name="stat_profiles">\n%1$s↑\t%2$s↓</string>
-  <string name="traffic_summary">%1$s/s↑\t%2$s/s↓</string>
   <string name="connection_test_pending">Проверить подключение</string>
   <string name="connection_test_testing">Проверка…</string>
   <string name="connection_test_available">Успешно: %dms задержка</string>
@@ -154,6 +152,25 @@
     <item quantity="other">%d элементы удалены</item>
   </plurals>
   <string name="undo">Вернуть</string>
+
+  <string name="tips_testing">тестирование....</string>
+  <string name="tips_sorting">сортировка....</string>
+  <string name="action_full_test">Испытание полностью латентность</string>
+  <string name="action_sort">Автоматическая сортировка по времени ожидания</string>
+  <string name="ping">пинг</string>
+
+  <string name="frontproxy_enable">включить</string>
+  <string name="frontproxy_addr">Адрес</string>
+  <string name="frontproxy_port">порт</string>
+  <string name="frontproxy_username">имя пользователя</string>
+  <string name="frontproxy_password">пароль</string>
+  <string name="frontproxy_type">Тип</string>
+  <string name="frontproxy_set">фронт полномочие</string>
+
+
+  <string name="scan_qrcode_install_title">Сканирование подсказки кода</string>
+  <string name="scan_qrcode_install_text">Кажется, вы не установили сканер в соответствии с ZXing стандартами, нажмите кнопку «ОК» приведет вас в магазин приложений, где вы установили загрузку, или вы можете нажать кнопку «Загрузить», чтобы загрузить APK установлен непосредственно.</string>
+  <string name="scan_qrcode_direct_download_text">Загрузить</string>
 
   <!-- tasker -->
   <string name="toggle_service_state">Запустить сервисStart the service</string>

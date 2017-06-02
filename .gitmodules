@@ -16,8 +16,8 @@
 	branch = shadowsocks-android
 [submodule "src/main/jni/shadowsocks-libev"]
 	path = src/main/jni/shadowsocks-libev
-	url = https://github.com/glzjin/shadowsocks-libev.git
-	branch = shadowsocksr-android
+	url = https://github.com/shadowsocksr/shadowsocksr-libev.git
+	branch = master
 [submodule "src/main/jni/mbedtls"]
 	path = src/main/jni/mbedtls
 	url = https://github.com/ARMmbed/mbedtls
@@ -26,5 +26,9 @@
 	url = https://android.googlesource.com/platform/external/pcre
 [submodule "src/main/jni/libevent"]
 	path = src/main/jni/libevent
-	url = https://github.com/lucifer9/libevent
+	url = https://github.com/shadowsocks/libevent.git
 	branch = shadowsocks-android
+[submodule "src/main/jni/proxychains"]
+	path = src/main/jni/proxychains
+	url = https://github.com/esdeathlove/proxychains-ng.git
+	branch = master

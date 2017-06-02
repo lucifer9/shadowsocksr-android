@@ -324,7 +324,7 @@ LOCAL_SRC_FILES := $(addprefix shadowsocks-libev/libudns/,$(UDNS_SOURCES))
 include $(BUILD_STATIC_LIBRARY)
 
 ########################################################
-## libev 
+## libev
 ########################################################
 
 include $(CLEAR_VARS)
@@ -334,7 +334,7 @@ LOCAL_CFLAGS += -O2 -DNDEBUG -DHAVE_CONFIG_H \
 				-I$(LOCAL_PATH)/include/libev
 LOCAL_SRC_FILES := \
 	shadowsocks-libev/libev/ev.c \
-	shadowsocks-libev/libev/event.c 
+	shadowsocks-libev/libev/event.c
 
 include $(BUILD_STATIC_LIBRARY)
 
@@ -352,7 +352,7 @@ REDSOCKS_SOURCES := base.c http-connect.c \
 LOCAL_STATIC_LIBRARIES := libevent
 
 LOCAL_MODULE := redsocks
-LOCAL_SRC_FILES := $(addprefix redsocks/, $(REDSOCKS_SOURCES)) 
+LOCAL_SRC_FILES := $(addprefix redsocks/, $(REDSOCKS_SOURCES))
 LOCAL_CFLAGS := -O2 -std=gnu99 -DUSE_IPTABLES \
 	-I$(LOCAL_PATH)/redsocks \
 	-I$(LOCAL_PATH)/libevent/include \
@@ -389,7 +389,7 @@ SHADOWSOCKS_SOURCES := local.c cache.c udprelay.c encrypt.c \
 
 LOCAL_MODULE    := ss-local
 LOCAL_SRC_FILES := $(addprefix shadowsocks-libev/src/, $(SHADOWSOCKS_SOURCES))
-LOCAL_CFLAGS    := -Wall -O2 -fno-strict-aliasing -DMODULE_LOCAL \
+LOCAL_CFLAGS    := -Wall -O0 -g -fno-strict-aliasing -DMODULE_LOCAL \
 					-DUSE_CRYPTO_MBEDTLS -DANDROID -DHAVE_CONFIG_H \
 					-DCONNECT_IN_PROGRESS=EINPROGRESS \
 					-I$(LOCAL_PATH)/include/shadowsocks-libev \
@@ -402,7 +402,8 @@ LOCAL_CFLAGS    := -Wall -O2 -fno-strict-aliasing -DMODULE_LOCAL \
 					-I$(LOCAL_PATH)/shadowsocks-libev/libsodium/src/libsodium/include \
 					-I$(LOCAL_PATH)/shadowsocks-libev/libsodium/src/libsodium/include/sodium \
 					-I$(LOCAL_PATH)/shadowsocks-libev/libipset/include \
-					-I$(LOCAL_PATH)/shadowsocks-libev/libev
+					-I$(LOCAL_PATH)/shadowsocks-libev/libev \
+					-I$(LOCAL_PATH)/shadowsocks-libev/src
 
 LOCAL_STATIC_LIBRARIES := libev libmbedtls libipset libcork libudns \
 	libsodium libancillary libpcre
@@ -417,28 +418,7 @@ include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
 
-SHADOWSOCKS_SOURCES := tunnel.c cache.c udprelay.c encrypt.c utils.c netutils.c json.c jconf.c android.c
-
-LOCAL_MODULE    := ss-tunnel
-LOCAL_SRC_FILES := $(addprefix shadowsocks-libev/src/, $(SHADOWSOCKS_SOURCES))
-LOCAL_CFLAGS    := -Wall -O2 -fno-strict-aliasing -DMODULE_TUNNEL \
-					-DUSE_CRYPTO_MBEDTLS -DANDROID -DHAVE_CONFIG_H -DSSTUNNEL_JNI \
-					-DCONNECT_IN_PROGRESS=EINPROGRESS \
-					-I$(LOCAL_PATH)/libancillary \
-					-I$(LOCAL_PATH)/include \
-					-I$(LOCAL_PATH)/shadowsocks-libev/libudns \
-					-I$(LOCAL_PATH)/shadowsocks-libev/libcork/include \
-					-I$(LOCAL_PATH)/shadowsocks-libev/libsodium/src/libsodium/include \
-					-I$(LOCAL_PATH)/shadowsocks-libev/libsodium/src/libsodium/include/sodium \
-					-I$(LOCAL_PATH)/mbedtls/include \
-					-I$(LOCAL_PATH)/shadowsocks-libev/libev \
-					-I$(LOCAL_PATH)/include/shadowsocks-libev
-
-LOCAL_STATIC_LIBRARIES := libev libmbedtls libsodium libcork libudns libancillary
-
-LOCAL_LDLIBS := -llog
-
-include $(BUILD_EXECUTABLE)
+SHADOWSOCKS_SOURCES := cache.c udprelay.c encrypt.c utils.c netutils.c json.c jconf.c android.c
 
 ########################################################
 ## system
@@ -538,7 +518,7 @@ TUN2SOCKS_SOURCES := \
         base/DebugObject.c \
         base/BLog.c \
         base/BPending.c \
-		system/BDatagram_unix.c \
+				system/BDatagram_unix.c \
         flowextra/PacketPassInactivityMonitor.c \
         tun2socks/SocksUdpGwClient.c \
         udpgw_client/UdpGwClient.c
@@ -552,7 +532,7 @@ LOCAL_SRC_FILES := $(addprefix badvpn/, $(TUN2SOCKS_SOURCES))
 include $(BUILD_EXECUTABLE)
 
 ########################################################
-## mbed TLS 
+## mbed TLS
 ########################################################
 
 include $(CLEAR_VARS)
@@ -568,12 +548,12 @@ LOCAL_SRC_FILES := $(MBEDTLS_SOURCES:$(LOCAL_PATH)/%=%)
 include $(BUILD_STATIC_LIBRARY)
 
 ########################################################
-## pcre 
+## pcre
 ########################################################
 
 include $(CLEAR_VARS)
 
-LOCAL_MODULE := pcre 
+LOCAL_MODULE := pcre
 
 LOCAL_CFLAGS += -DHAVE_CONFIG_H
 
@@ -606,6 +586,35 @@ LOCAL_SRC_FILES := $(addprefix pcre/, $(libpcre_src_files))
 
 include $(BUILD_STATIC_LIBRARY)
 
+########################################################
+## libproxychains4
+########################################################
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE:= libproxychains4
+
+LOCAL_C_INCLUDES:= $(LOCAL_PATH)/proxychains/src
+
+PROXYCHAINS_SOURCES := version.c core.c common.c libproxychains.c \
+											allocator_thread.c ip_type.c hostsreader.c \
+											hash.c debug.c
+
+LOCAL_SRC_FILES := $(addprefix proxychains/src/, $(PROXYCHAINS_SOURCES))
+
+LOCAL_CFLAGS :=  	-fPIC -pthread -ldl -Wl,--no-as-needed -Wl,-soname=libproxychains4.so \
+									-DANDROID -O0 -g\
+									-I$(LOCAL_PATH)/include/proxychains \
+									-I$(LOCAL_PATH)/proxychains/src \
+				   				-I$(LOCAL_PATH)/libancillary \
+									-DLIB_DIR=\"/data/user/0/in.zhaoj.shadowsocksr/lib\" -DINSTALL_PREFIX=\"/data/user/0/in.zhaoj.shadowsocksr/\" \
+									-DDLL_NAME=\"libproxychains4.so\" -DSYSCONFDIR=\"/data/user/0/in.zhaoj.shadowsocksr/\"
+
+LOCAL_STATIC_LIBRARIES := libancillary
+
+LOCAL_LDLIBS := -ldl -llog
+
+include $(BUILD_SHARED_LIBRARY)
+
 # Import cpufeatures
 $(call import-module,android/cpufeatures)
-

@@ -123,6 +123,10 @@
   <string name="add_profile_nfc_hint">保持两台设备的屏幕亮起，在另外一台设备上，点击配置文件的分享按钮，将它们靠在一起（背靠背）。\n你也可以扫描 NFC 标签。</string>
   <string name="add_profile_scanner_permission_required">扫描二维码需要相机权限。</string>
 
+  <string name="scan_qrcode_install_title">扫码提示</string>
+  <string name="scan_qrcode_install_text">看起来似乎您并没有安装符合 zxing 标准的扫描器，点击“确定”将带领您前往您所安装的应用商店里下载一个，或者您可以直接点击“直接下载”来下载一个 APK 直接安装。</string>
+  <string name="scan_qrcode_direct_download_text">直接下载</string>
+
   <string-array name="route_entry">
     <item>全局</item>
     <item>绕过局域网地址</item>
@@ -160,6 +164,20 @@
   <string name="start_service">连接到 %s</string>
   <string name="stop_service">切换到 %s</string>
   <string name="profile_default">使用当前配置</string>
+
+  <string name="tips_testing">测试中...</string>
+  <string name="tips_sorting">排序中...</string>
+  <string name="action_full_test">完整延时测试</string>
+  <string name="action_sort">基于延时自动排序</string>
+  <string name="ping">测试延时</string>
+
+  <string name="frontproxy_enable">启用</string>
+  <string name="frontproxy_addr">地址</string>
+  <string name="frontproxy_port">端口</string>
+  <string name="frontproxy_username">用户名</string>
+  <string name="frontproxy_password">密码</string>
+  <string name="frontproxy_type">类型</string>
+  <string name="frontproxy_set">前置代理</string>
 
   <!-- status -->
   <string name="sent">发送:</string>

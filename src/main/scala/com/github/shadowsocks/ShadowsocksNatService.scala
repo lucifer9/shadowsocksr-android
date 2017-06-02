@@ -42,15 +42,19 @@ package com.github.shadowsocks
 import java.io.File
 import java.net.{Inet6Address, InetAddress}
 import java.util.Locale
+import scala.io.Source
 
 import android.content._
 import android.os._
+import android.system.Os
 import android.util.Log
 import com.github.shadowsocks.ShadowsocksApplication.app
 import com.github.shadowsocks.database.Profile
 import com.github.shadowsocks.job.AclSyncJob
 import com.github.shadowsocks.utils._
 import eu.chainfire.libsuperuser.Shell
+import android.preference.PreferenceManager
+import java.io.RandomAccessFile
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
@@ -70,6 +74,7 @@ class ShadowsocksNatService extends BaseService {
   var redsocksProcess: GuardedProcess = _
   var pdnsdProcess: GuardedProcess = _
   var su: Shell.Interactive = _
+  var proxychains_enable: Boolean = false
 
   def startShadowsocksDaemon() {
 
@@ -80,7 +85,7 @@ class ShadowsocksNatService extends BaseService {
       p.println(conf)
     })
 
-    val cmd = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-local"
+    val cmd = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-local", "-x"
           , "-b" , "127.0.0.1"
           , "-t" , "600"
           , "-P", getApplicationInfo.dataDir
@@ -91,6 +96,11 @@ class ShadowsocksNatService extends BaseService {
     if (profile.route != Route.ALL) {
       cmd += "--acl"
       cmd += getApplicationInfo.dataDir + '/' + profile.route + ".acl"
+    }
+
+    if (proxychains_enable) {
+      cmd prepend "LD_PRELOAD=" + getApplicationInfo.dataDir + "/lib/libproxychains4.so"
+      cmd prepend "env"
     }
 
     if (BuildConfig.DEBUG) Log.d(TAG, cmd.mkString(" "))
@@ -105,9 +115,9 @@ class ShadowsocksNatService extends BaseService {
       Utils.printToFile(new File(getApplicationInfo.dataDir + "/ss-tunnel-nat.conf"))(p => {
         p.println(conf)
       })
-      val cmd = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-tunnel"
+      val cmd = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-local"
         , "-u"
-        , "-t" , "10"
+        , "-t" , "60"
         , "-b" , "127.0.0.1"
         , "-l" , (profile.localPort + 53).toString
         , "-P" , getApplicationInfo.dataDir
@@ -118,6 +128,11 @@ class ShadowsocksNatService extends BaseService {
         cmd += profile.china_dns.split(",")(0)
       else
         cmd += profile.dns.split(",")(0)
+
+      if (proxychains_enable) {
+        cmd prepend "LD_PRELOAD=" + getApplicationInfo.dataDir + "/lib/libproxychains4.so"
+        cmd prepend "env"
+      }
 
       if (BuildConfig.DEBUG) Log.d(TAG, cmd.mkString(" "))
 
@@ -131,7 +146,7 @@ class ShadowsocksNatService extends BaseService {
         p.println(conf)
       })
 
-      val cmdBuf = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-tunnel"
+      val cmdBuf = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-local"
         , "-t" , "10"
         , "-b" , "127.0.0.1"
         , "-l" , (profile.localPort + 63).toString
@@ -143,6 +158,11 @@ class ShadowsocksNatService extends BaseService {
         cmdBuf += profile.china_dns.split(",")(0)
       else
         cmdBuf += profile.dns.split(",")(0)
+
+      if (proxychains_enable) {
+        cmdBuf prepend "LD_PRELOAD=" + getApplicationInfo.dataDir + "/lib/libproxychains4.so"
+        cmdBuf prepend "env"
+      }
 
       if (BuildConfig.DEBUG) Log.d(TAG, cmdBuf.mkString(" "))
 
@@ -156,9 +176,28 @@ class ShadowsocksNatService extends BaseService {
 
     var china_dns_settings = ""
 
+    var remote_dns = false
+
+    if (profile.route == Route.ACL) {
+        //decide acl route
+        val total_lines = Source.fromFile(new File(getApplicationInfo.dataDir + '/' + profile.route + ".acl")).getLines()
+        total_lines.foreach((line: String) => {
+            if (line.equals("[remote_dns]")) {
+                remote_dns = true
+            }
+        })
+    }
+
     val black_list = profile.route match {
       case Route.BYPASS_CHN | Route.BYPASS_LAN_CHN | Route.GFWLIST => {
         getBlackList
+      }
+      case Route.ACL => {
+        if (remote_dns) {
+            ""
+        } else {
+            getBlackList
+        }
       }
       case _ => {
         ""
@@ -178,6 +217,15 @@ class ShadowsocksNatService extends BaseService {
       case Route.CHINALIST => {
         ConfigUtils.PDNSD_DIRECT.formatLocal(Locale.ENGLISH, "", getApplicationInfo.dataDir,
           "127.0.0.1", profile.localPort + 53, china_dns_settings, profile.localPort + 63, reject)
+      }
+      case Route.ACL => {
+        if (!remote_dns) {
+            ConfigUtils.PDNSD_DIRECT.formatLocal(Locale.ENGLISH, "", getApplicationInfo.dataDir,
+              "127.0.0.1", profile.localPort + 53, china_dns_settings, profile.localPort + 63, reject)
+        } else {
+            ConfigUtils.PDNSD_LOCAL.formatLocal(Locale.ENGLISH, "", getApplicationInfo.dataDir,
+              "127.0.0.1", profile.localPort + 53, profile.localPort + 63, reject)
+        }
       }
       case _ => {
         ConfigUtils.PDNSD_LOCAL.formatLocal(Locale.ENGLISH, "", getApplicationInfo.dataDir,
@@ -208,13 +256,11 @@ class ShadowsocksNatService extends BaseService {
 
   /** Called when the activity is first created. */
   def handleConnection() {
-
     startTunnel()
     if (!profile.udpdns) startDnsDaemon()
     startRedsocksDaemon()
     startShadowsocksDaemon()
     setupIptables()
-
   }
 
   def onBind(intent: Intent): IBinder = {
@@ -256,7 +302,34 @@ class ShadowsocksNatService extends BaseService {
 
     val cmd_bypass = "iptables -t nat -A OUTPUT -p tcp -d 0.0.0.0 -j RETURN"
     if (!InetAddress.getByName(profile.host.toUpperCase).isInstanceOf[Inet6Address]) {
-      init_sb.append(cmd_bypass.replace("-p tcp -d 0.0.0.0", "-d " + profile.host))
+      if (proxychains_enable) {
+        val raf = new RandomAccessFile(getApplicationInfo.dataDir + "/proxychains.conf", "r");
+        val len = raf.length();
+        var lastLine = "";
+        if (len != 0L) {
+          var pos = len - 1;
+          while (pos > 0) {
+            pos -= 1;
+            raf.seek(pos);
+            if (raf.readByte() == '\n' && lastLine.equals("")) {
+              lastLine = raf.readLine();
+            }
+          }
+        }
+        raf.close();
+
+        val str_array = lastLine.split(' ')
+        var host = str_array(1)
+
+        if (!Utils.isNumeric(host)) Utils.resolve(host, enableIPv6 = true) match {
+          case Some(a) => host = a
+          case None => throw NameNotResolvedException()
+        }
+
+        init_sb.append(cmd_bypass.replace("-p tcp -d 0.0.0.0", "-d " + host))
+      } else {
+        init_sb.append(cmd_bypass.replace("-p tcp -d 0.0.0.0", "-d " + profile.host))
+      }
     }
     init_sb.append(cmd_bypass.replace("-p tcp -d 0.0.0.0", "-d 127.0.0.1"))
     init_sb.append(cmd_bypass.replace("-p tcp -d 0.0.0.0", "-m owner --uid-owner " + myUid))
@@ -299,6 +372,14 @@ class ShadowsocksNatService extends BaseService {
 
     // Clean up
     killProcesses()
+
+    if (new File(getApplicationInfo.dataDir + "/proxychains.conf").exists) {
+      proxychains_enable = true
+      Os.setenv("PROXYCHAINS_CONF_FILE", getApplicationInfo.dataDir + "/proxychains.conf", true)
+      Os.setenv("PROXYCHAINS_PROTECT_FD_PREFIX", getApplicationInfo.dataDir, true)
+    } else {
+      proxychains_enable = false
+    }
 
     if (!Utils.isNumeric(profile.host)) Utils.resolve(profile.host, enableIPv6 = true) match {
       case Some(a) => profile.host = a
