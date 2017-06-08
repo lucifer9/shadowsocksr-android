@@ -110,6 +110,7 @@ class ProfileManager(dbHelper: DBHelper) {
         .and().eq("protocol_param", profile.protocol_param)
         .and().eq("obfs", profile.obfs)
         .and().eq("obfs_param", profile.obfs_param)
+        .and().eq("url_group", profile.url_group)
         .and().eq("method", profile.method).queryForFirst()
       if (last_exist == null)
       {
@@ -124,9 +125,83 @@ class ProfileManager(dbHelper: DBHelper) {
     profile
   }
 
+  def createProfile_sub(p: Profile = null): Int = {
+    val profile = if (p == null) new Profile else p
+    profile.id = 0
+    try {
+      app.currentProfile match {
+        case Some(oldProfile) =>
+          // Copy Feature Settings from old profile
+          profile.route = oldProfile.route
+          profile.ipv6 = oldProfile.ipv6
+          profile.proxyApps = oldProfile.proxyApps
+          profile.bypass = oldProfile.bypass
+          profile.individual = oldProfile.individual
+          profile.udpdns = oldProfile.udpdns
+          profile.dns = oldProfile.dns
+          profile.china_dns = oldProfile.china_dns
+        case _ =>
+      }
+      val last = dbHelper.profileDao.queryRaw(dbHelper.profileDao.queryBuilder.selectRaw("MAX(userOrder)")
+        .prepareStatementString).getFirstResult
+      if (last != null && last.length == 1 && last(0) != null) profile.userOrder = last(0).toInt + 1
+
+      val last_exist = dbHelper.profileDao.queryBuilder()
+        .where().eq("name", profile.name)
+        .and().eq("host", profile.host)
+        .and().eq("remotePort", profile.remotePort)
+        .and().eq("password", profile.password)
+        .and().eq("protocol", profile.protocol)
+        .and().eq("protocol_param", profile.protocol_param)
+        .and().eq("obfs", profile.obfs)
+        .and().eq("obfs_param", profile.obfs_param)
+        .and().eq("url_group", profile.url_group)
+        .and().eq("method", profile.method).queryForFirst().asInstanceOf[Profile]
+      if (last_exist == null) {
+        dbHelper.profileDao.createOrUpdate(profile)
+        0
+      } else {
+        last_exist.id
+      }
+    } catch {
+      case ex: Exception =>
+        Log.e(TAG, "addProfile", ex)
+        app.track(ex)
+        0
+    }
+  }
+
   def updateProfile(profile: Profile): Boolean = {
     try {
       dbHelper.profileDao.update(profile)
+      true
+    } catch {
+      case ex: Exception =>
+        Log.e(TAG, "updateProfile", ex)
+        app.track(ex)
+        false
+    }
+  }
+
+  def updateAllProfile_String(key:String, value:String): Boolean = {
+    try {
+      dbHelper.profileDao.executeRawNoArgs("UPDATE `profile` SET " + key + " = '" + value + "';")
+      true
+    } catch {
+      case ex: Exception =>
+        Log.e(TAG, "updateProfile", ex)
+        app.track(ex)
+        false
+    }
+  }
+
+  def updateAllProfile_Boolean(key:String, value:Boolean): Boolean = {
+    try {
+      if (value) {
+        dbHelper.profileDao.executeRawNoArgs("UPDATE `profile` SET " + key + " = '1';")
+      } else {
+        dbHelper.profileDao.executeRawNoArgs("UPDATE `profile` SET " + key + " = '0';")
+      }
       true
     } catch {
       case ex: Exception =>
@@ -186,10 +261,23 @@ class ProfileManager(dbHelper: DBHelper) {
     }
   }
 
+  def getAllProfilesByGroup(group:String): Option[List[Profile]] = {
+    try {
+      import scala.collection.JavaConversions._
+      Option(dbHelper.profileDao.query(dbHelper.profileDao.queryBuilder.where().eq("url_group", group).prepare).toList)
+    } catch {
+      case ex: Exception =>
+        Log.e(TAG, "getAllProfiles", ex)
+        app.track(ex)
+        None
+    }
+  }
+
   def getAllProfilesByElapsed: Option[List[Profile]] = {
     try {
       import scala.collection.JavaConversions._
-      Option(dbHelper.profileDao.query(dbHelper.profileDao.queryBuilder.orderBy("elapsed", true).prepare).toList)
+      Option(dbHelper.profileDao.query(dbHelper.profileDao.queryBuilder.orderBy("elapsed", true).where().not().eq("elapsed", 0).prepare).toList
+      ++ dbHelper.profileDao.query(dbHelper.profileDao.queryBuilder.orderBy("elapsed", true).where().eq("elapsed", 0).prepare).toList)
     } catch {
       case ex: Exception =>
         Log.e(TAG, "getAllProfiles", ex)

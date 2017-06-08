@@ -33,7 +33,7 @@ import android.util.Log
 object ShadowsocksSettings {
   // Constants
   private final val TAG = "ShadowsocksSettings"
-  private val PROXY_PREFS = Array(Key.name, Key.host, Key.remotePort, Key.localPort, Key.password, Key.method,
+  private val PROXY_PREFS = Array(Key.group_name, Key.name, Key.host, Key.remotePort, Key.localPort, Key.password, Key.method,
     Key.protocol, Key.obfs, Key.obfs_param, Key.dns, Key.china_dns, Key.protocol_param)
   private val FEATURE_PREFS = Array(Key.route, Key.proxyApps, Key.udpdns, Key.ipv6)
 
@@ -62,8 +62,8 @@ object ShadowsocksSettings {
 
   def updatePreference(pref: Preference, name: String, profile: Profile) {
     name match {
+      case Key.group_name => updateSummaryEditTextPreference(pref, profile.url_group)
       case Key.name => updateSummaryEditTextPreference(pref, profile.name)
-      case Key.host => updateSummaryEditTextPreference(pref, profile.host)
       case Key.remotePort => updateNumberPickerPreference(pref, profile.remotePort)
       case Key.localPort => updateNumberPickerPreference(pref, profile.localPort)
       case Key.password => updatePasswordEditTextPreference(pref, profile.password)
@@ -78,6 +78,7 @@ object ShadowsocksSettings {
       case Key.dns => updateSummaryEditTextPreference(pref, profile.dns)
       case Key.china_dns => updateSummaryEditTextPreference(pref, profile.china_dns)
       case Key.ipv6 => updateSwitchPreference(pref, profile.ipv6)
+      case Key.host => {}
     }
   }
 }
@@ -95,13 +96,30 @@ class ShadowsocksSettings extends PreferenceFragment with OnSharedPreferenceChan
     addPreferencesFromResource(R.xml.pref_all)
     getPreferenceManager.getSharedPreferences.registerOnSharedPreferenceChangeListener(this)
 
+    findPreference(Key.group_name).setOnPreferenceChangeListener((_, value) => {
+      profile.url_group = value.asInstanceOf[String]
+      app.profileManager.updateProfile(profile)
+    })
     findPreference(Key.name).setOnPreferenceChangeListener((_, value) => {
       profile.name = value.asInstanceOf[String]
       app.profileManager.updateProfile(profile)
     })
-    findPreference(Key.host).setOnPreferenceChangeListener((_, value) => {
-      profile.host = value.asInstanceOf[String]
-      app.profileManager.updateProfile(profile)
+    findPreference(Key.host).setOnPreferenceClickListener((preference: Preference) => {
+      val HostEditText = new EditText(activity);
+      HostEditText.setText(profile.host);
+      new AlertDialog.Builder(activity)
+        .setTitle(getString(R.string.proxy))
+        .setPositiveButton(android.R.string.ok, ((_, _) => {
+          profile.host = HostEditText.getText().toString()
+          app.profileManager.updateProfile(profile)
+        }): DialogInterface.OnClickListener)
+        .setNegativeButton(android.R.string.no,  ((_, _) => {
+          setProfile(profile)
+        }): DialogInterface.OnClickListener)
+        .setView(HostEditText)
+        .create()
+        .show()
+      true
     })
     findPreference(Key.remotePort).setOnPreferenceChangeListener((_, value) => {
       profile.remotePort = value.asInstanceOf[Int]
@@ -150,8 +168,7 @@ class ShadowsocksSettings extends PreferenceFragment with OnSharedPreferenceChan
             {
               getPreferenceManager.getSharedPreferences.edit.putString(Key.aclurl, AclUrlEditText.getText().toString()).commit()
               downloadAcl(AclUrlEditText.getText().toString())
-              profile.route = value.asInstanceOf[String]
-              app.profileManager.updateProfile(profile)
+              app.profileManager.updateAllProfile_String(Key.route, value.asInstanceOf[String])
             }
           }): DialogInterface.OnClickListener)
           .setNegativeButton(android.R.string.no,  ((_, _) => {
@@ -162,8 +179,7 @@ class ShadowsocksSettings extends PreferenceFragment with OnSharedPreferenceChan
           .show()
       }
       else {
-        profile.route = value.asInstanceOf[String]
-        app.profileManager.updateProfile(profile)
+        app.profileManager.updateAllProfile_String(Key.route, value.asInstanceOf[String])
       }
 
       true
@@ -176,25 +192,20 @@ class ShadowsocksSettings extends PreferenceFragment with OnSharedPreferenceChan
       false
     })
     isProxyApps.setOnPreferenceChangeListener((_, value) => {
-      profile.proxyApps = value.asInstanceOf[Boolean]
-      app.profileManager.updateProfile(profile)
+      app.profileManager.updateAllProfile_Boolean("proxyApps", value.asInstanceOf[Boolean])
     })
 
     findPreference(Key.udpdns).setOnPreferenceChangeListener((_, value) => {
-      profile.udpdns = value.asInstanceOf[Boolean]
-      app.profileManager.updateProfile(profile)
+      app.profileManager.updateAllProfile_Boolean("udpdns", value.asInstanceOf[Boolean])
     })
     findPreference(Key.dns).setOnPreferenceChangeListener((_, value) => {
-      profile.dns = value.asInstanceOf[String]
-      app.profileManager.updateProfile(profile)
+      app.profileManager.updateAllProfile_String(Key.dns, value.asInstanceOf[String])
     })
     findPreference(Key.china_dns).setOnPreferenceChangeListener((_, value) => {
-      profile.china_dns = value.asInstanceOf[String]
-      app.profileManager.updateProfile(profile)
+      app.profileManager.updateAllProfile_String(Key.china_dns, value.asInstanceOf[String])
     })
     findPreference(Key.ipv6).setOnPreferenceChangeListener((_, value) => {
-      profile.ipv6 = value.asInstanceOf[Boolean]
-      app.profileManager.updateProfile(profile)
+      app.profileManager.updateAllProfile_Boolean("ipv6", value.asInstanceOf[Boolean])
     })
 
     val switch = findPreference(Key.isAutoConnect).asInstanceOf[SwitchPreference]
@@ -305,7 +316,6 @@ class ShadowsocksSettings extends PreferenceFragment with OnSharedPreferenceChan
     })
 
     findPreference(Key.frontproxy).setOnPreferenceClickListener((preference: Preference) => {
-      getPreferenceManager.setSharedPreferencesMode(Context.MODE_PRIVATE | Context.MODE_MULTI_PROCESS)
       val prefs = getPreferenceManager.getSharedPreferences()
 
       val view = View.inflate(activity, R.layout.layout_front_proxy, null);

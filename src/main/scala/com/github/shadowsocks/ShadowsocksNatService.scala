@@ -75,6 +75,11 @@ class ShadowsocksNatService extends BaseService {
   var pdnsdProcess: GuardedProcess = _
   var su: Shell.Interactive = _
   var proxychains_enable: Boolean = false
+  var host_arg = ""
+  var dns_address = ""
+  var dns_port = 0
+  var china_dns_address = ""
+  var china_dns_port = 0
 
   def startShadowsocksDaemon() {
 
@@ -88,6 +93,7 @@ class ShadowsocksNatService extends BaseService {
     val cmd = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-local", "-x"
           , "-b" , "127.0.0.1"
           , "-t" , "600"
+          , "--host", host_arg
           , "-P", getApplicationInfo.dataDir
           , "-c" , getApplicationInfo.dataDir + "/ss-local-nat.conf")
 
@@ -100,6 +106,8 @@ class ShadowsocksNatService extends BaseService {
 
     if (proxychains_enable) {
       cmd prepend "LD_PRELOAD=" + getApplicationInfo.dataDir + "/lib/libproxychains4.so"
+      cmd prepend "PROXYCHAINS_CONF_FILE=" + getApplicationInfo.dataDir + "/proxychains.conf"
+      cmd prepend "PROXYCHAINS_PROTECT_FD_PREFIX=" + getApplicationInfo.dataDir
       cmd prepend "env"
     }
 
@@ -108,66 +116,42 @@ class ShadowsocksNatService extends BaseService {
   }
 
   def startTunnel() {
+    var localPort = profile.localPort + 63
     if (profile.udpdns) {
-      val conf = ConfigUtils
-        .SHADOWSOCKS.formatLocal(Locale.ENGLISH, profile.host, profile.remotePort, profile.localPort + 53,
-          ConfigUtils.EscapedJson(profile.password), profile.method, 600, profile.protocol, profile.obfs, ConfigUtils.EscapedJson(profile.obfs_param), ConfigUtils.EscapedJson(profile.protocol_param))
-      Utils.printToFile(new File(getApplicationInfo.dataDir + "/ss-tunnel-nat.conf"))(p => {
-        p.println(conf)
-      })
-      val cmd = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-local"
-        , "-u"
-        , "-t" , "60"
-        , "-b" , "127.0.0.1"
-        , "-l" , (profile.localPort + 53).toString
-        , "-P" , getApplicationInfo.dataDir
-        , "-c" , getApplicationInfo.dataDir + "/ss-tunnel-nat.conf")
-
-      cmd += "-L"
-      if (profile.route == Route.CHINALIST)
-        cmd += profile.china_dns.split(",")(0)
-      else
-        cmd += profile.dns.split(",")(0)
-
-      if (proxychains_enable) {
-        cmd prepend "LD_PRELOAD=" + getApplicationInfo.dataDir + "/lib/libproxychains4.so"
-        cmd prepend "env"
-      }
-
-      if (BuildConfig.DEBUG) Log.d(TAG, cmd.mkString(" "))
-
-      sstunnelProcess = new GuardedProcess(cmd).start()
-
-    } else {
-      val conf = ConfigUtils
-        .SHADOWSOCKS.formatLocal(Locale.ENGLISH, profile.host, profile.remotePort, profile.localPort + 63,
-          ConfigUtils.EscapedJson(profile.password), profile.method, 600, profile.protocol, profile.obfs, ConfigUtils.EscapedJson(profile.obfs_param), ConfigUtils.EscapedJson(profile.protocol_param))
-      Utils.printToFile(new File(getApplicationInfo.dataDir + "/ss-tunnel-nat.conf"))(p => {
-        p.println(conf)
-      })
-
-      val cmdBuf = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-local"
-        , "-t" , "10"
-        , "-b" , "127.0.0.1"
-        , "-l" , (profile.localPort + 63).toString
-        , "-P", getApplicationInfo.dataDir
-        , "-c" , getApplicationInfo.dataDir + "/ss-tunnel-nat.conf")
-
-      cmdBuf += "-L"
-      if (profile.route == Route.CHINALIST)
-        cmdBuf += profile.china_dns.split(",")(0)
-      else
-        cmdBuf += profile.dns.split(",")(0)
-
-      if (proxychains_enable) {
-        cmdBuf prepend "LD_PRELOAD=" + getApplicationInfo.dataDir + "/lib/libproxychains4.so"
-        cmdBuf prepend "env"
-      }
-
-      if (BuildConfig.DEBUG) Log.d(TAG, cmdBuf.mkString(" "))
-
-      sstunnelProcess = new GuardedProcess(cmdBuf).start()
+      localPort = profile.localPort + 53
     }
+
+    val conf = ConfigUtils
+      .SHADOWSOCKS.formatLocal(Locale.ENGLISH, profile.host, profile.remotePort, localPort,
+        ConfigUtils.EscapedJson(profile.password), profile.method, 600, profile.protocol, profile.obfs, ConfigUtils.EscapedJson(profile.obfs_param), ConfigUtils.EscapedJson(profile.protocol_param))
+    Utils.printToFile(new File(getApplicationInfo.dataDir + "/ss-tunnel-nat.conf"))(p => {
+      p.println(conf)
+    })
+    val cmd = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-local"
+      , "-u"
+      , "-t" , "60"
+      , "--host", host_arg
+      , "-b" , "127.0.0.1"
+      , "-l" , localPort.toString
+      , "-P" , getApplicationInfo.dataDir
+      , "-c" , getApplicationInfo.dataDir + "/ss-tunnel-nat.conf")
+
+    cmd += "-L"
+    if (profile.route == Route.CHINALIST)
+      cmd += china_dns_address + ":" + china_dns_port.toString
+    else
+      cmd += dns_address + ":" + dns_port.toString
+
+    if (proxychains_enable) {
+      cmd prepend "LD_PRELOAD=" + getApplicationInfo.dataDir + "/lib/libproxychains4.so"
+      cmd prepend "PROXYCHAINS_CONF_FILE=" + getApplicationInfo.dataDir + "/proxychains.conf"
+      cmd prepend "PROXYCHAINS_PROTECT_FD_PREFIX=" + getApplicationInfo.dataDir
+      cmd prepend "env"
+    }
+
+    if (BuildConfig.DEBUG) Log.d(TAG, cmd.mkString(" "))
+
+    sstunnelProcess = new GuardedProcess(cmd).start()
   }
 
   def startDnsDaemon() {
@@ -375,12 +359,30 @@ class ShadowsocksNatService extends BaseService {
 
     if (new File(getApplicationInfo.dataDir + "/proxychains.conf").exists) {
       proxychains_enable = true
-      Os.setenv("PROXYCHAINS_CONF_FILE", getApplicationInfo.dataDir + "/proxychains.conf", true)
-      Os.setenv("PROXYCHAINS_PROTECT_FD_PREFIX", getApplicationInfo.dataDir, true)
+      //Os.setenv("PROXYCHAINS_CONF_FILE", getApplicationInfo.dataDir + "/proxychains.conf", true)
+      //Os.setenv("PROXYCHAINS_PROTECT_FD_PREFIX", getApplicationInfo.dataDir, true)
     } else {
       proxychains_enable = false
     }
 
+    try {
+      val dns = scala.util.Random.shuffle(profile.dns.split(",").toList).head
+      dns_address = dns.split(":")(0)
+      dns_port = dns.split(":")(1).toInt
+
+      val china_dns = scala.util.Random.shuffle(profile.china_dns.split(",").toList).head
+      china_dns_address = china_dns.split(":")(0)
+      china_dns_port = china_dns.split(":")(1).toInt
+    } catch {
+      case ex: Exception =>
+        dns_address = "8.8.8.8"
+        dns_port = 53
+
+        china_dns_address = "223.5.5.5"
+        china_dns_port = 53
+    }
+
+    host_arg = profile.host
     if (!Utils.isNumeric(profile.host)) Utils.resolve(profile.host, enableIPv6 = true) match {
       case Some(a) => profile.host = a
       case None => throw NameNotResolvedException()

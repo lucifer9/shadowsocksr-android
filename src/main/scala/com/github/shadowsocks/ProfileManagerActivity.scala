@@ -22,13 +22,15 @@ import android.support.v7.widget.helper.ItemTouchHelper.SimpleCallback
 import android.text.style.TextAppearanceSpan
 import android.text.{SpannableStringBuilder, Spanned, TextUtils}
 import android.view._
-import android.widget.{CheckedTextView, ImageView, LinearLayout, Toast}
+import android.widget.{CheckedTextView, ImageView, LinearLayout, Toast, Switch, CompoundButton, TextView, EditText}
 import android.net.Uri
+import java.io.IOException
 import android.support.design.widget.Snackbar
 import com.github.clans.fab.{FloatingActionButton, FloatingActionMenu}
 import com.github.shadowsocks.ShadowsocksApplication.app
 import com.github.shadowsocks.aidl.IShadowsocksServiceCallback
 import com.github.shadowsocks.database.Profile
+import com.github.shadowsocks.database.SSRSub
 import com.github.shadowsocks.utils.{Key, Parser, TrafficMonitor, Utils}
 import com.github.shadowsocks.widget.UndoSnackbarManager
 import com.github.shadowsocks.utils._
@@ -36,10 +38,12 @@ import com.github.shadowsocks.utils.CloseUtils._
 import net.glxn.qrgen.android.QRCode
 import java.lang.System.currentTimeMillis
 import java.lang.Thread
-import java.util.Random;
-import android.util.Log
+import java.util.Random
+import android.util.{Base64, Log}
 import android.content.DialogInterface._
-
+import okhttp3._
+import java.util.concurrent.TimeUnit
+import android.preference.PreferenceManager
 import scala.collection.mutable.ArrayBuffer
 
 final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClickListener with ServiceBoundContext
@@ -99,7 +103,7 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
       val pingBtn = itemView.findViewById(R.id.ping_single)
       pingBtn.setOnClickListener(_ => {
 
-        val singleTestProgressDialog = ProgressDialog.show(ProfileManagerActivity.this, getString(R.string.tips_testing), getString(R.string.tips_testing), false, false)
+        val singleTestProgressDialog = ProgressDialog.show(ProfileManagerActivity.this, getString(R.string.tips_testing), getString(R.string.tips_testing), false, true)
 
         var profile = item
 
@@ -121,11 +125,17 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
 
           val cmd = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-local"
             , "-t", "600"
+            , "-L", "www.google.com:80"
             , "-c", getApplicationInfo.dataDir + "/ss-local-test.conf")
 
           if (TcpFastOpen.sendEnabled) cmd += "--fast-open"
 
-          var sslocalProcess = new GuardedProcess(cmd).start()
+          if (ssTestProcess != null) {
+            ssTestProcess.destroy()
+            ssTestProcess = null
+          }
+
+          ssTestProcess = new GuardedProcess(cmd).start()
 
           val start = currentTimeMillis
           while (start - currentTimeMillis < 5 * 1000 && isPortAvailable(profile.localPort + 2)) {
@@ -135,11 +145,51 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
               case e: InterruptedException => Unit
             }
           }
-
-          val proxy = new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("127.0.0.1", profile.localPort + 2))
+          //val proxy = new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("127.0.0.1", profile.localPort + 2))
 
           // Based on: https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/connectivity/NetworkMonitor.java#640
-          autoDisconnect(new URL("https", "www.google.com", "/generate_204").openConnection(proxy)
+
+          //okhttp
+          var result = ""
+          val builder = new OkHttpClient.Builder()
+                          .connectTimeout(5, TimeUnit.SECONDS)
+                          .writeTimeout(5, TimeUnit.SECONDS)
+                          .readTimeout(5, TimeUnit.SECONDS)
+
+          val client = builder.build();
+
+          val request = new Request.Builder()
+            .url("http://127.0.0.1:" + (profile.localPort + 2) + "/generate_204").removeHeader("Host").addHeader("Host", "www.google.com")
+            .build();
+
+          try {
+            val response = client.newCall(request).execute()
+            val code = response.code()
+            if (code == 204 || code == 200 && response.body().contentLength == 0) {
+              val start = currentTimeMillis
+              val response = client.newCall(request).execute()
+              val elapsed = currentTimeMillis - start
+              val code = response.code()
+              if (code == 204 || code == 200 && response.body().contentLength == 0)
+              {
+                result = getString(R.string.connection_test_available, elapsed: java.lang.Long)
+                profile.elapsed = elapsed
+                app.profileManager.updateProfile(profile)
+
+                this.updateText(0, 0, elapsed)
+              }
+              else throw new Exception(getString(R.string.connection_test_error_status_code, code: Integer))
+              response.body().close()
+            } else throw new Exception(getString(R.string.connection_test_error_status_code, code: Integer))
+            response.body().close()
+          } catch {
+            case e: IOException =>
+              result = getString(R.string.connection_test_error, e.getMessage)
+          }
+
+          Snackbar.make(findViewById(android.R.id.content), result, Snackbar.LENGTH_LONG).show
+
+          /*autoDisconnect(new URL("https", "www.google.com", "/generate_204").openConnection(proxy)
             .asInstanceOf[HttpURLConnection]) { conn =>
             conn.setConnectTimeout(5 * 1000)
             conn.setReadTimeout(5 * 1000)
@@ -189,11 +239,11 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
                 result = getString(R.string.connection_test_error, e.getMessage)
                 Snackbar.make(findViewById(android.R.id.content), result, Snackbar.LENGTH_LONG).show
             }
-          }
+          }*/
 
-          if (sslocalProcess != null) {
-            sslocalProcess.destroy()
-            sslocalProcess = null
+          if (ssTestProcess != null) {
+            ssTestProcess.destroy()
+            ssTestProcess = null
           }
 
           singleTestProgressDialog.dismiss()
@@ -217,10 +267,10 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
         elapsed = elapsedInput
       }
       builder.append(item.name)
-      if (tx != 0 || rx != 0 || elapsed != 0) {
+      if (tx != 0 || rx != 0 || elapsed != 0 || item.url_group != "") {
         val start = builder.length
         builder.append(getString(R.string.stat_profiles,
-          TrafficMonitor.formatTraffic(tx), TrafficMonitor.formatTraffic(rx), String.valueOf(elapsed)))
+          TrafficMonitor.formatTraffic(tx), TrafficMonitor.formatTraffic(rx), String.valueOf(elapsed), item.url_group))
         builder.setSpan(new TextAppearanceSpan(ProfileManagerActivity.this, android.R.style.TextAppearance_Small),
           start + 1, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
       }
@@ -258,7 +308,11 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
 
   private class ProfilesAdapter extends RecyclerView.Adapter[ProfileViewHolder] {
     var profiles = new ArrayBuffer[Profile]
-    profiles ++= app.profileManager.getAllProfiles.getOrElse(List.empty[Profile])
+    if (is_sort) {
+      profiles ++= app.profileManager.getAllProfilesByElapsed.getOrElse(List.empty[Profile])
+    } else {
+      profiles ++= app.profileManager.getAllProfiles.getOrElse(List.empty[Profile])
+    }
 
     def getItemCount = profiles.length
 
@@ -307,12 +361,70 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
     }
   }
 
+  private final class SSRSubViewHolder(val view: View) extends RecyclerView.ViewHolder(view)
+    with View.OnClickListener with View.OnKeyListener {
+
+    var item: SSRSub = _
+    private val text = itemView.findViewById(android.R.id.text2).asInstanceOf[TextView]
+    itemView.setOnClickListener(this)
+
+    def updateText(isShowUrl: Boolean = false) {
+      val builder = new SpannableStringBuilder
+      builder.append(this.item.url_group + "\n")
+      if (isShowUrl) {
+        val start = builder.length
+        builder.append(this.item.url)
+        builder.setSpan(new TextAppearanceSpan(ProfileManagerActivity.this, android.R.style.TextAppearance_Small),
+          start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      }
+      handler.post(() => text.setText(builder))
+    }
+
+    def bind(item: SSRSub) {
+      this.item = item
+      updateText()
+    }
+
+    def onClick(v: View) = {
+      updateText(true)
+    }
+
+    def onKey(v: View, keyCode: Int, event: KeyEvent) = {
+      true
+    }
+  }
+
+  private class SSRSubAdapter extends RecyclerView.Adapter[SSRSubViewHolder] {
+    var profiles = new ArrayBuffer[SSRSub]
+    profiles ++= app.ssrsubManager.getAllSSRSubs.getOrElse(List.empty[SSRSub])
+
+    def getItemCount = profiles.length
+
+    def onBindViewHolder(vh: SSRSubViewHolder, i: Int) = vh.bind(profiles(i))
+
+    def onCreateViewHolder(vg: ViewGroup, i: Int) =
+      new SSRSubViewHolder(LayoutInflater.from(vg.getContext).inflate(R.layout.layout_ssr_sub_item, vg, false))
+
+    def add(item: SSRSub) {
+      undoManager.flush
+      val pos = getItemCount
+      profiles += item
+      notifyItemInserted(pos)
+    }
+
+    def remove(pos: Int) {
+      profiles.remove(pos)
+      notifyItemRemoved(pos)
+    }
+  }
+
   private var selectedItem: ProfileViewHolder = _
   private val handler = new Handler
 
   private var menu : FloatingActionMenu = _
 
   private lazy val profilesAdapter = new ProfilesAdapter
+  private lazy val ssrsubAdapter = new SSRSubAdapter
   private var undoManager: UndoSnackbarManager[Profile] = _
 
   private lazy val clipboard = getSystemService(Context.CLIPBOARD_SERVICE).asInstanceOf[ClipboardManager]
@@ -326,8 +438,10 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
   private var testProgressDialog: ProgressDialog = _
   private var testAsyncJob: Thread = _
   private var isTesting: Boolean = true
+  private var ssTestProcess: GuardedProcess = _
 
   private val REQUEST_QRCODE = 1
+  private var is_sort: Boolean = false
 
 
   def isPortAvailable (port: Int):Boolean = {
@@ -348,8 +462,12 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
     super.onCreate(savedInstanceState)
 
     val action = getIntent().getAction()
-    if (action != null && action.equals("in.zhaoj.shadowsocksr.intent.action.SCAN")) {
+    if (action != null && action.equals(Action.SCAN)) {
        qrcodeScan()
+    }
+
+    if (action != null && action.equals(Action.SORT)) {
+       is_sort = true
     }
 
     setContentView(R.layout.layout_profiles)
@@ -378,18 +496,20 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
       case (profile, i) if profile.id == app.profileId => i
     }.getOrElse(-1))
     undoManager = new UndoSnackbarManager[Profile](profilesList, profilesAdapter.undo, profilesAdapter.commit)
-    new ItemTouchHelper(new SimpleCallback(ItemTouchHelper.UP | ItemTouchHelper.DOWN,
-      ItemTouchHelper.START | ItemTouchHelper.END) {
-      def onSwiped(viewHolder: ViewHolder, direction: Int) = {
-        val index = viewHolder.getAdapterPosition
-        profilesAdapter.remove(index)
-        undoManager.remove(index, viewHolder.asInstanceOf[ProfileViewHolder].item)
-      }
-      def onMove(recyclerView: RecyclerView, viewHolder: ViewHolder, target: ViewHolder) = {
-        profilesAdapter.move(viewHolder.getAdapterPosition, target.getAdapterPosition)
-        true
-      }
-    }).attachToRecyclerView(profilesList)
+    if (is_sort == false) {
+      new ItemTouchHelper(new SimpleCallback(ItemTouchHelper.UP | ItemTouchHelper.DOWN,
+        ItemTouchHelper.START | ItemTouchHelper.END) {
+        def onSwiped(viewHolder: ViewHolder, direction: Int) = {
+          val index = viewHolder.getAdapterPosition
+          profilesAdapter.remove(index)
+          undoManager.remove(index, viewHolder.asInstanceOf[ProfileViewHolder].item)
+        }
+        def onMove(recyclerView: RecyclerView, viewHolder: ViewHolder, target: ViewHolder) = {
+          profilesAdapter.move(viewHolder.getAdapterPosition, target.getAdapterPosition)
+          true
+        }
+      }).attachToRecyclerView(profilesList)
+    }
 
     attachService(new IShadowsocksServiceCallback.Stub {
       def stateChanged(state: Int, profileName: String, msg: String) = () // ignore
@@ -423,6 +543,9 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
     val importAddFAB = findViewById(R.id.fab_import_add).asInstanceOf[FloatingActionButton]
     importAddFAB.setImageDrawable(dm.getDrawable(this, R.drawable.ic_content_paste))
     importAddFAB.setOnClickListener(this)
+    val ssrsubAddFAB = findViewById(R.id.fab_ssr_sub).asInstanceOf[FloatingActionButton]
+    ssrsubAddFAB.setImageDrawable(dm.getDrawable(this, R.drawable.ic_rss))
+    ssrsubAddFAB.setOnClickListener(this)
     menu.setOnMenuToggleListener(opened => if (opened) qrcodeAddFAB.setVisibility(
       if (getPackageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA)) View.VISIBLE else View.GONE))
   }
@@ -515,7 +638,178 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
           }
         }
         Toast.makeText(this, R.string.action_import_err, Toast.LENGTH_SHORT).show
+      case R.id.fab_ssr_sub =>
+        menu.toggle(true)
+        ssrsubDialog()
     }
+  }
+
+  def ssrsubDialog() {
+    val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+
+    val view = View.inflate(this, R.layout.layout_ssr_sub, null);
+    val sw_ssr_sub_autoupdate_enable = view.findViewById(R.id.sw_ssr_sub_autoupdate_enable).asInstanceOf[Switch]
+
+    app.ssrsubManager.setSSRSubAddedListener(ssrsubAdapter.add)
+    val ssusubsList = view.findViewById(R.id.ssrsubList).asInstanceOf[RecyclerView]
+    val layoutManager = new LinearLayoutManager(this)
+    ssusubsList.setLayoutManager(layoutManager)
+    ssusubsList.setItemAnimator(new DefaultItemAnimator)
+    ssusubsList.setAdapter(ssrsubAdapter)
+    new ItemTouchHelper(new SimpleCallback(ItemTouchHelper.UP | ItemTouchHelper.DOWN,
+      ItemTouchHelper.START | ItemTouchHelper.END) {
+      def onSwiped(viewHolder: ViewHolder, direction: Int) = {
+        val index = viewHolder.getAdapterPosition
+        ssrsubAdapter.remove(index)
+        app.ssrsubManager.delSSRSub(viewHolder.asInstanceOf[SSRSubViewHolder].item.id)
+      }
+      def onMove(recyclerView: RecyclerView, viewHolder: ViewHolder, target: ViewHolder) = {
+        true
+      }
+    }).attachToRecyclerView(ssusubsList)
+
+    if (prefs.getInt(Key.ssrsub_autoupdate, 0) == 1) {
+      sw_ssr_sub_autoupdate_enable.setChecked(true)
+    }
+
+    sw_ssr_sub_autoupdate_enable.setOnCheckedChangeListener(((_, isChecked: Boolean) => {
+      val prefs_edit = prefs.edit()
+      if (isChecked) {
+        prefs_edit.putInt(Key.ssrsub_autoupdate, 1)
+      } else {
+        prefs_edit.putInt(Key.ssrsub_autoupdate, 0)
+      }
+      prefs_edit.apply()
+    }): CompoundButton.OnCheckedChangeListener)
+
+    new AlertDialog.Builder(this)
+      .setTitle(getString(R.string.add_profile_methods_ssr_sub))
+      .setPositiveButton(R.string.ssrsub_ok, ((_, _) => {
+        Utils.ThrowableFuture {
+          handler.post(() => {
+            testProgressDialog = ProgressDialog.show(ProfileManagerActivity.this, getString(R.string.ssrsub_progres), getString(R.string.ssrsub_progres_text), false, true)
+          })
+          app.ssrsubManager.getAllSSRSubs match {
+            case Some(ssrsubs) =>
+              ssrsubs.foreach((ssrsub: SSRSub) => {
+
+                  var delete_profiles = app.profileManager.getAllProfilesByGroup(ssrsub.url_group) match {
+                    case Some(profiles) =>
+                      profiles
+                    case _ => null
+                  }
+                  var result = ""
+                  val builder = new OkHttpClient.Builder()
+                                  .connectTimeout(5, TimeUnit.SECONDS)
+                                  .writeTimeout(5, TimeUnit.SECONDS)
+                                  .readTimeout(5, TimeUnit.SECONDS)
+
+                  val client = builder.build();
+
+                  val request = new Request.Builder()
+                    .url(ssrsub.url)
+                    .build();
+
+                  try {
+                    val response = client.newCall(request).execute()
+                    val code = response.code()
+                    if (code == 200) {
+                      val response_string = new String(Base64.decode(response.body().string, Base64.URL_SAFE))
+                      var limit_num = -1
+                      var encounter_num = 0
+                      if (response_string.indexOf("MAX=") == 0) {
+                        limit_num = response_string.split("\\n")(0).split("MAX=")(1).replaceAll("\\D+","").toInt
+                      }
+                      var profiles_ssr = Parser.findAll_ssr(response_string)
+                      profiles_ssr = scala.util.Random.shuffle(profiles_ssr)
+                      profiles_ssr.foreach((profile: Profile) => {
+                        if (encounter_num < limit_num && limit_num != -1 || limit_num == -1) {
+                          val result = app.profileManager.createProfile_sub(profile)
+                          if (result != 0) {
+                            delete_profiles = delete_profiles.filter(_.id != result)
+                          }
+                        }
+                        encounter_num += 1
+                      })
+
+                      delete_profiles.foreach((profile: Profile) => {
+                        if (profile.id != app.profileId) {
+                          app.profileManager.delProfile(profile.id)
+                        }
+                      })
+                    } else throw new Exception(getString(R.string.ssrsub_error, code: Integer))
+                    response.body().close()
+                  } catch {
+                    case e: IOException =>
+                      result = getString(R.string.ssrsub_error, e.getMessage)
+                  }
+              })
+            case _ => Toast.makeText(this, R.string.action_export_err, Toast.LENGTH_SHORT).show
+          }
+
+          handler.post(() => testProgressDialog.dismiss)
+
+          finish()
+          startActivity(new Intent(getIntent()))
+        }
+      }): DialogInterface.OnClickListener)
+      .setNegativeButton(android.R.string.no, null)
+      .setNeutralButton(R.string.ssrsub_add, ((_, _) => {
+        val UrlAddEdit = new EditText(this);
+        new AlertDialog.Builder(this)
+          .setTitle(getString(R.string.ssrsub_add))
+          .setPositiveButton(android.R.string.ok, ((_, _) => {
+            if(UrlAddEdit.getText().toString() != "") {
+              Utils.ThrowableFuture {
+                handler.post(() => {
+                  testProgressDialog = ProgressDialog.show(ProfileManagerActivity.this, getString(R.string.ssrsub_progres), getString(R.string.ssrsub_progres_text), false, true)
+                })
+                var result = ""
+                val builder = new OkHttpClient.Builder()
+                                .connectTimeout(5, TimeUnit.SECONDS)
+                                .writeTimeout(5, TimeUnit.SECONDS)
+                                .readTimeout(5, TimeUnit.SECONDS)
+
+                val client = builder.build();
+
+                try {
+                  val request = new Request.Builder()
+                    .url(UrlAddEdit.getText().toString())
+                    .build();
+                  val response = client.newCall(request).execute()
+                  val code = response.code()
+                  if (code == 200) {
+                    val profiles_ssr = Parser.findAll_ssr(new String(Base64.decode(response.body().string, Base64.URL_SAFE))).toList
+                    if(profiles_ssr(0).url_group != "") {
+                      val ssrsub = new SSRSub {
+                        url = UrlAddEdit.getText().toString()
+                        url_group = profiles_ssr(0).url_group
+                      }
+                      handler.post(() => app.ssrsubManager.createSSRSub(ssrsub))
+                    }
+                  } else throw new Exception(getString(R.string.ssrsub_error, code: Integer))
+                  response.body().close()
+                } catch {
+                  case e: Exception =>
+                    result = getString(R.string.ssrsub_error, e.getMessage)
+                }
+                handler.post(() => testProgressDialog.dismiss)
+                handler.post(() => ssrsubDialog())
+              }
+            } else {
+              handler.post(() => ssrsubDialog())
+            }
+          }): DialogInterface.OnClickListener)
+          .setNegativeButton(android.R.string.no, ((_, _) => {
+            ssrsubDialog()
+          }): DialogInterface.OnClickListener)
+          .setView(UrlAddEdit)
+          .create()
+          .show()
+      }): DialogInterface.OnClickListener)
+      .setView(view)
+      .create()
+      .show()
   }
 
   def updateNfcState() {
@@ -606,6 +900,12 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
 
   override def onDestroy {
     detachService()
+
+    if (ssTestProcess != null) {
+      ssTestProcess.destroy()
+      ssTestProcess = null
+    }
+
     undoManager.flush
     app.profileManager.setProfileAddedListener(null)
     super.onDestroy
@@ -654,7 +954,7 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
                   testAsyncJob.interrupt()
 
                   finish()
-                  startActivity(getIntent())
+                  startActivity(new Intent(getIntent()))
               }
           })
 
@@ -684,11 +984,17 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
 
                   val cmd = ArrayBuffer[String](getApplicationInfo.dataDir + "/ss-local"
                     , "-t", "600"
+                    , "-L", "www.google.com:80"
                     , "-c", getApplicationInfo.dataDir + "/ss-local-test.conf")
 
                   if (TcpFastOpen.sendEnabled) cmd += "--fast-open"
 
-                  var sslocalProcess = new GuardedProcess(cmd).start()
+                  if (ssTestProcess != null) {
+                    ssTestProcess.destroy()
+                    ssTestProcess = null
+                  }
+
+                  ssTestProcess = new GuardedProcess(cmd).start()
 
                   val start = currentTimeMillis
                   while (start - currentTimeMillis < 5 * 1000 && isPortAvailable(profile.localPort + 2)) {
@@ -699,11 +1005,50 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
                     }
                   }
 
+                  var result = ""
+                  val builder = new OkHttpClient.Builder()
+                                  .connectTimeout(5, TimeUnit.SECONDS)
+                                  .writeTimeout(5, TimeUnit.SECONDS)
+                                  .readTimeout(5, TimeUnit.SECONDS)
 
-                  val proxy = new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("127.0.0.1", profile.localPort + 2))
+                  val client = builder.build();
+
+                  val request = new Request.Builder()
+                    .url("http://127.0.0.1:" + (profile.localPort + 2) + "/generate_204").removeHeader("Host").addHeader("Host", "www.google.com")
+                    .build();
+
+                  try {
+                    val response = client.newCall(request).execute()
+                    val code = response.code()
+                    if (code == 204 || code == 200 && response.body().contentLength == 0) {
+                      val start = currentTimeMillis
+                      val response = client.newCall(request).execute()
+                      val elapsed = currentTimeMillis - start
+                      val code = response.code()
+                      if (code == 204 || code == 200 && response.body().contentLength == 0)
+                      {
+                        result = getString(R.string.connection_test_available, elapsed: java.lang.Long)
+                        profile.elapsed = elapsed
+                        app.profileManager.updateProfile(profile)
+                      }
+                      else throw new Exception(getString(R.string.connection_test_error_status_code, code: Integer))
+                      response.body().close()
+                    } else throw new Exception(getString(R.string.connection_test_error_status_code, code: Integer))
+                    response.body().close()
+                  } catch {
+                    case e: IOException =>
+                      result = getString(R.string.connection_test_error, e.getMessage)
+                  }
+
+                  var msg = Message.obtain()
+                  msg.obj = profile.name + " " + result
+                  msg.setTarget(showProgresshandler)
+                  msg.sendToTarget()
+
+                  //val proxy = new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("127.0.0.1", profile.localPort + 2))
 
                   // Based on: https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/connectivity/NetworkMonitor.java#640
-                  autoDisconnect(new URL("https", "www.google.com", "/generate_204").openConnection(proxy)
+                  /*autoDisconnect(new URL("https", "www.google.com", "/generate_204").openConnection(proxy)
                     .asInstanceOf[HttpURLConnection]) { conn =>
                     conn.setConnectTimeout(5 * 1000)
                     conn.setReadTimeout(5 * 1000)
@@ -758,11 +1103,11 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
                         msg.setTarget(showProgresshandler)
                         msg.sendToTarget()
                     }
-                  }
+                  }*/
 
-                  if (sslocalProcess != null) {
-                    sslocalProcess.destroy()
-                    sslocalProcess = null
+                  if (ssTestProcess != null) {
+                    ssTestProcess.destroy()
+                    ssTestProcess = null
                   }
                 }
               })
@@ -771,8 +1116,9 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
                 testProgressDialog.dismiss
                 testProgressDialog = null;
               }
+
               finish()
-              startActivity(getIntent())
+              startActivity(new Intent(getIntent()))
               Looper.loop()
             }
           }
@@ -783,34 +1129,9 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
       }
       true
     case R.id.action_sort =>
-      app.profileManager.getAllProfilesByElapsed match {
-        case Some(profiles) => {
-          var counter = 0
-          testProgressDialog = ProgressDialog.show(this, getString(R.string.tips_sorting), getString(R.string.tips_sorting), false, false)
-
-          new Thread {
-            override def run() {
-              Looper.prepare()
-              profiles.foreach((profile: Profile) => {
-                if (profile.elapsed != 0) {
-                  profile.userOrder = counter
-                  counter += 1
-                }
-                else
-                {
-                  profile.userOrder = profiles.length
-                }
-                app.profileManager.updateProfile(profile)
-              })
-              testProgressDialog.dismiss
-              finish()
-              startActivity(getIntent())
-              Looper.loop()
-            }
-          }.start()
-        }
-        case _ => Toast.makeText(this, R.string.action_export_err, Toast.LENGTH_SHORT).show
-      }
+      finish()
+      val intent = new Intent(Action.SORT)
+      startActivity(intent)
       true
     case _ => false
   }
