@@ -660,8 +660,39 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
       ItemTouchHelper.START | ItemTouchHelper.END) {
       def onSwiped(viewHolder: ViewHolder, direction: Int) = {
         val index = viewHolder.getAdapterPosition
-        ssrsubAdapter.remove(index)
-        app.ssrsubManager.delSSRSub(viewHolder.asInstanceOf[SSRSubViewHolder].item.id)
+        new AlertDialog.Builder(ProfileManagerActivity.this)
+          .setTitle(getString(R.string.ssrsub_remove_tip_title))
+          .setPositiveButton(R.string.ssrsub_remove_tip_direct, ((_, _) => {
+            ssrsubAdapter.remove(index)
+            app.ssrsubManager.delSSRSub(viewHolder.asInstanceOf[SSRSubViewHolder].item.id)
+          }): DialogInterface.OnClickListener)
+          .setNegativeButton(android.R.string.no,  ((_, _) => {
+            ssrsubAdapter.notifyDataSetChanged()
+          }): DialogInterface.OnClickListener)
+          .setNeutralButton(R.string.ssrsub_remove_tip_delete,  ((_, _) => {
+            var delete_profiles = app.profileManager.getAllProfilesByGroup(viewHolder.asInstanceOf[SSRSubViewHolder].item.url_group) match {
+              case Some(profiles) =>
+                profiles
+              case _ => null
+            }
+
+            delete_profiles.foreach((profile: Profile) => {
+              if (profile.id != app.profileId) {
+                app.profileManager.delProfile(profile.id)
+              }
+            })
+
+            val index = viewHolder.getAdapterPosition
+            ssrsubAdapter.remove(index)
+            app.ssrsubManager.delSSRSub(viewHolder.asInstanceOf[SSRSubViewHolder].item.id)
+
+            finish()
+            startActivity(new Intent(getIntent()))
+          }): DialogInterface.OnClickListener)
+          .setMessage(getString(R.string.ssrsub_remove_tip))
+          .setCancelable(false)
+          .create()
+          .show()
       }
       def onMove(recyclerView: RecyclerView, viewHolder: ViewHolder, target: ViewHolder) = {
         true
@@ -721,9 +752,15 @@ final class ProfileManagerActivity extends AppCompatActivity with OnMenuItemClic
                         limit_num = response_string.split("\\n")(0).split("MAX=")(1).replaceAll("\\D+","").toInt
                       }
                       var profiles_ssr = Parser.findAll_ssr(response_string)
-                      profiles_ssr = scala.util.Random.shuffle(profiles_ssr)
+
+                      val profiles_temp = Parser.findAll_ssr(response_string)
+                      val profiles_count = profiles_temp.length
+                      if (limit_num != -1 && limit_num != profiles_count) {
+                        profiles_ssr = scala.util.Random.shuffle(profiles_ssr)
+                      }
+
                       profiles_ssr.foreach((profile: Profile) => {
-                        if (encounter_num < limit_num && limit_num != -1 || limit_num == -1) {
+                        if ((encounter_num < limit_num && limit_num != -1) || limit_num == -1) {
                           val result = app.profileManager.createProfile_sub(profile)
                           if (result != 0) {
                             delete_profiles = delete_profiles.filter(_.id != result)

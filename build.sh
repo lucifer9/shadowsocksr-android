@@ -11,11 +11,11 @@ try pushd src/main
 try ${ANDROID_NDK_HOME}/ndk-build -j2
 
 # copy executables
-rm -rf assets/arm64-v8a
-mkdir -p assets/arm64-v8a
+rm -rf assets/armeabi-v7a
+mkdir -p assets/armeabi-v7a
 for app in pdnsd redsocks ss-local tun2socks
 do
-    try mv libs/arm64-v8a/$app assets/arm64-v8a/
+    try mv libs/armeabi-v7a/$app assets/armeabi-v7a/
 done
 
 try popd
